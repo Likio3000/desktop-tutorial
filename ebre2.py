@@ -25,11 +25,20 @@ class ContractScraper:
     def scrape_contract_from_file(self, filepath):
         logging.info(f"Scraping contract addresses from {filepath}")
         tokens = self.read_csv(filepath)
+        href_to_tokens = {}
+
         for token in tokens:
-            contract_address = self.get_contract_address(token['href'])
+            href = token['href']
+            if href not in href_to_tokens:
+                href_to_tokens[href] = []
+            href_to_tokens[href].append(token)
+
+        for href, tokens_list in href_to_tokens.items():
+            contract_address = self.get_contract_address(href)
             if contract_address:
-                token['contract_address'] = contract_address
-                self.update_csv(filepath, token)
+                for token in tokens_list:
+                    token['contract_address'] = contract_address
+                self.update_csv(filepath, tokens_list)
 
     def read_csv(self, filepath):
         tokens = []
@@ -39,16 +48,17 @@ class ContractScraper:
                 tokens.append(row)
         return tokens
 
-    def update_csv(self, filepath, token):
+    def update_csv(self, filepath, updated_tokens):
         temp_filepath = filepath + ".tmp"
         fieldnames = ['name', 'fullname', 'price', 'age', 'makers', 'volume', 'buys', 'sells', 'liquidity', 'FDV', 'href', 'timestamp', 'contract_address']
         with open(filepath, 'r', newline='', encoding='utf-8') as file, open(temp_filepath, 'w', newline='', encoding='utf-8') as temp_file:
             reader = csv.DictReader(file)
             writer = csv.DictWriter(temp_file, fieldnames=fieldnames)
             writer.writeheader()
+            href_to_updated_token = {token['href']: token for token in updated_tokens}
             for row in reader:
-                if row['href'] == token['href']:
-                    row['contract_address'] = token.get('contract_address', row.get('contract_address', ''))
+                if row['href'] in href_to_updated_token:
+                    row['contract_address'] = href_to_updated_token[row['href']].get('contract_address', row.get('contract_address', ''))
                 writer.writerow(row)
         os.replace(temp_filepath, filepath)
 
@@ -114,7 +124,7 @@ class TestContractAddressTest:
             logging.error("Element not found or timeout exceeded")
 
 def main():
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levellevelname)s - %(message)s')
     driver = Driver(uc=True)
     driver.maximize_window()
     
