@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import schedule
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
 
 class ContractScraper:
     def __init__(self, driver, folder="new_memes"):
@@ -85,12 +86,54 @@ class ContractScraper:
     def close(self):
         self.driver.quit()
 
+class TestContractAddressTest:
+    def setup_method(self, method):
+        self.driver = Driver(browser="chrome")
+        self.vars = {}
+    
+    def teardown_method(self, method):
+        self.driver.quit()
+    
+    def wait_for_window(self, timeout=2):
+        time.sleep(timeout)
+        wh_now = self.driver.window_handles
+        wh_then = self.vars["window_handles"]
+        if len(wh_now) > len(wh_then):
+            return list(set(wh_now) - set(wh_then))[0]
+    
+    def test_contract_address_test(self):
+        self.driver.get("https://dexscreener.com/solana/8mtwqhqpeu9xqpmndhpo59z6nkvo32ptz7qwggo8ewrz")
+        self.driver.set_window_size(1919, 1040)
+        self.driver.execute_script("window.scrollTo(0, 0)")
+        self.vars["window_handles"] = self.driver.window_handles
+        self.driver.find_element(By.CSS_SELECTOR, ".chakra-stack:nth-child(9) .chakra-link").click()
+        self.vars["win6911"] = self.wait_for_window(2)
+        self.driver.switch_to.window(self.vars["win6911"])
+        try:
+            element = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a:nth-child(1) > .cursor-pointer"))
+            )
+            actions = ActionChains(self.driver)
+            actions.move_to_element(element).perform()
+        except (NoSuchElementException, TimeoutException):
+            logging.error("Element not found or timeout exceeded")
+
 def main():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     driver = Driver(uc=True)
     driver.maximize_window()
+    
+    # Run the contract scraper
     scraper = ContractScraper(driver)
     scraper.run_scraper()
+
+    # Run the test
+    test = TestContractAddressTest()
+    test.setup_method(None)
+    try:
+        test.test_contract_address_test()
+    finally:
+        test.teardown_method(None)
 
     try:
         while True:
