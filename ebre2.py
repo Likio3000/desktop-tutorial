@@ -150,4 +150,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# Falta poner la logica para que no repita sobre las que ya tienen un contract address
+# 

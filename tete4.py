@@ -7,11 +7,10 @@ from seleniumbase import Driver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, ElementClickInterceptedException
 import pyperclip
-import schedule
 
-class NewJunkScraper:
+class InitialTokenScraper:
     BASE_URL = "https://dexscreener.com/"
     RANK_BY = "pairAge"
     ORDER = "asc"
@@ -28,6 +27,7 @@ class NewJunkScraper:
         self.good_tokens_file = "good_tokens.json"
         self.bad_tokens_file = "bad_tokens.json"
         self.initialize_json_files()
+        self.driver.maximize_window() 
 
     def initialize_json_files(self):
         for file in [self.new_tokens_file, self.good_tokens_file, self.bad_tokens_file]:
@@ -52,7 +52,7 @@ class NewJunkScraper:
     def parse_token(self, index):
         a_xpath = f'/html/body/div[1]/div/main/div/div[4]/a[{index}]'
         try:
-            a_element = WebDriverWait(self.driver, 10).until(
+            a_element = WebDriverWait(self.driver, 5).until(
                 EC.presence_of_element_located((By.XPATH, a_xpath))
             )
             token_data = {
@@ -77,6 +77,7 @@ class NewJunkScraper:
 
         for token in new_tokens:
             token['contract_address'] = self.get_contract_address(token['href'])
+            token['locked_liquidity'] = self.check_locked_liquidity(token['href'])
 
         logging.info(f"Found {len(new_tokens)} new tokens")
         self.save_tokens(new_tokens, self.new_tokens_file)
@@ -97,45 +98,70 @@ class NewJunkScraper:
     def get_contract_address(self, href):
         logging.info(f"Fetching contract address from {href}")
         self.driver.get(href)
+        
+        # Scrolling down to load elements
+        for i in range(5):  # Adjust the range for more or fewer scrolls
+            self.driver.execute_script("window.scrollBy(0, window.innerHeight / 5);")
+            logging.info(f"Scrolled down {i + 1} time(s)")
+            time.sleep(1)  # Adjust the sleep time for human-like delays
+        
+        for attempt in range(3):  # Retry mechanism
+            try:
+                button_xpath = "(//button[@type='button'])[22]"
+                button_element = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, button_xpath))
+                )
+                button_element.click()
+                time.sleep(1)
+                contract_address = pyperclip.paste().strip()
+                
+                if self.validate_contract_address(contract_address):
+                    logging.info(f"Extracted contract address: {contract_address}")
+                    return contract_address
+                else:
+                    logging.warning(f"Invalid contract address fetched: {contract_address}. Retrying...")
+
+            except (TimeoutException, NoSuchElementException, ElementClickInterceptedException) as e:
+                logging.error(f"Failed to get contract address from {href} on attempt {attempt + 1}: {e}")
+                
+        return None
+
+    def check_locked_liquidity(self, href):
+        logging.info(f"Checking locked liquidity for {href}")
+        self.driver.get(href)
         try:
-            button_xpath = "(//button[@type='button'])[22]"
-            button_element = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, button_xpath))
+            liquidity_css_selector = ".custom-f1j64i > .chakra-icon"
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, liquidity_css_selector))
             )
-            button_element.click()
+            logging.info(f"Locked liquidity present for {href}")
+            return True
+        except TimeoutException:
+            logging.info(f"No locked liquidity found for {href}")
+            return False
+        except NoSuchElementException as e:
+            logging.error(f"Failed to check locked liquidity for {href}: {e}")
+            return False
 
-            time.sleep(1)
-            contract_address = pyperclip.paste()
-            logging.info(f"Extracted contract address: {contract_address}")
+    def validate_contract_address(self, address):
+        return address and address.isalnum() and address.lower() != address.upper()
 
-            return contract_address
-        except (TimeoutException, NoSuchElementException) as e:
-            logging.error(f"Failed to get contract address from {href}: {e}")
-            return None
-
-    def run_scraper(self):
-        logging.info("Starting new tokens scraper")
+    def run_initialization(self):
+        logging.info("Starting initial tokens scraper")
         tokens = self.fetch_tokens()
         self.classify_and_save_tokens(tokens)
-
-    def schedule_scraper(self):
-        schedule.every().minute.at(":10").do(self.run_scraper)
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
 
     def close(self):
         self.driver.quit()
 
 def main():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
     driver = Driver(uc=True)
-    scraper = NewJunkScraper(driver)
-    scraper.schedule_scraper()
-    driver.quit()
+    driver.set_window_size(1919, 1040)  # Configure window size
+    scraper = InitialTokenScraper(driver)
+    scraper.run_initialization()
+    scraper.close()
 
 if __name__ == "__main__":
     main()
-
-
-# a i :50 en cada minuto, hacemos schedule para extraer el href y guardarlo.
